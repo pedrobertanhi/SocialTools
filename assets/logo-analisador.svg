@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title>Logo do Analisador de Seguidores</title>
+  <defs>
+    <linearGradient id="bg" x1="70" y1="55" x2="450" y2="465" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9B5CFF"/>
+      <stop offset=".52" stop-color="#6D28D9"/>
+      <stop offset="1" stop-color="#38106C"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="165" y1="145" x2="365" y2="366" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7D8FF"/>
+      <stop offset="1" stop-color="#F2B8FF"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="126" fill="url(#bg)"/>
+  <path d="M351 112c-82 0-149 67-149 149 0 29 8 56 23 79l-79 79c-13 13-13 34 0 47 13 13 34 13 47 0l79-79a149 149 0 1 0 79-275Zm0 58a91 91 0 1 1 0 182 91 91 0 0 1 0-182Z" fill="#fff" opacity=".98"/>
+  <circle cx="351" cy="261" r="55" fill="url(#accent)"/>
+  <circle cx="351" cy="242" r="19" fill="#6120BD"/>
+  <path d="M309 301c7-27 25-39 42-39s35 12 42 39c-13 11-27 16-42 16s-29-5-42-16Z" fill="#6120BD"/>
+  <path d="M335 218c10-14 28-17 41-7" fill="none" stroke="#fff" stroke-linecap="round" stroke-width="10"/>
+  <circle cx="127" cy="145" r="17" fill="#fff" opacity=".68"/>
+  <circle cx="162" cy="111" r="9" fill="#fff" opacity=".42"/>
+</svg>

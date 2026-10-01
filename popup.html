@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="popup.css">
+    <title>Social Tools</title>
+  </head>
+  <body>
+    <main>
+      <header>
+        <img class="logo" src="assets/logo-analisador.svg" alt="Logo do Social Tools">
+        <div>
+          <h1>Social Tools</h1>
+          <p>Ferramentas para suas redes</p>
+        </div>
+      </header>
+
+      <nav class="platforms" aria-label="Escolha a rede social">
+        <button class="platform active" data-platform="instagram">Instagram</button>
+        <button class="platform" data-platform="tiktok">TikTok</button>
+      </nav>
+
+      <section id="instagram-tools" class="tools">
+        <h2>Instagram</h2>
+        <p class="description">Abra um perfil público e compare seguidores e seguindo.</p>
+        <button id="insta-nao-seguidores" class="primary">Quem não segue de volta</button>
+      </section>
+
+      <section id="tiktok-tools" class="tools hidden">
+        <h2>TikTok</h2>
+        <p class="description">Abra o TikTok conectado e selecione a ferramenta.</p>
+        <nav class="tool-menu" aria-label="Ferramentas do TikTok">
+          <button class="tool-option active" data-tiktok-tool="curtidas">Curtidas</button>
+          <button class="tool-option" data-tiktok-tool="reposts">Reposts</button>
+        </nav>
+
+        <div id="tiktok-curtidas-panel" class="tool-panel">
+          <p class="tool-description">Analise seus vídeos curtidos antes de remover qualquer curtida.</p>
+          <button id="tiktok-analisar-curtidas" class="primary">Analisar vídeos curtidos</button>
+          <div class="selection-card">
+            <div class="selection-header"><strong>Quantidade para analisar</strong><span id="quantidade-curtidas-badge" class="count-badge">0</span></div>
+            <div class="selection-options" role="group" aria-label="Quantidade de curtidas">
+              <button class="active" data-mode="todos" data-select-type="curtidas">Todos</button>
+              <button data-mode="quantidade" data-select-type="curtidas">Escolher quantidade</button>
+            </div>
+            <div id="custom-curtidas" class="custom-amount hidden">
+              <button data-step="curtidas" data-direction="-1" aria-label="Diminuir">−</button>
+              <input id="quantidade-curtidas" type="number" min="1" max="10000" value="100" inputmode="numeric">
+              <button data-step="curtidas" data-direction="1" aria-label="Aumentar">+</button>
+              <small>Serão analisados e removidos somente estes vídeos.</small>
+            </div>
+          </div>
+          <button id="tiktok-remover-curtidas" class="danger" disabled>Remover curtidas</button>
+        </div>
+
+        <div id="tiktok-reposts-panel" class="tool-panel hidden">
+          <p class="tool-description">Analise seus vídeos repostados e escolha exatamente quantos desfazer.</p>
+          <button id="tiktok-analisar-reposts" class="primary">Analisar vídeos repostados</button>
+          <div class="selection-card">
+            <div class="selection-header"><strong>Quantidade para analisar</strong><span id="quantidade-reposts-badge" class="count-badge">0</span></div>
+            <div class="selection-options" role="group" aria-label="Quantidade de reposts">
+              <button class="active" data-mode="todos" data-select-type="reposts">Todos</button>
+              <button data-mode="quantidade" data-select-type="reposts">Escolher quantidade</button>
+            </div>
+            <div id="custom-reposts" class="custom-amount hidden">
+              <button data-step="reposts" data-direction="-1" aria-label="Diminuir">−</button>
+              <input id="quantidade-reposts" type="number" min="1" max="10000" value="100" inputmode="numeric">
+              <button data-step="reposts" data-direction="1" aria-label="Aumentar">+</button>
+              <small>Serão analisados e removidos somente estes vídeos.</small>
+            </div>
+          </div>
+          <button id="tiktok-remover-reposts" class="danger" disabled>Remover reposts</button>
+        </div>
+      </section>
+
+      <p id="status" class="status">Escolha uma rede e uma ferramenta.</p>
+
+      <section id="resultado" class="hidden">
+        <div class="cards">
+          <article><strong id="total-um">0</strong><span id="rotulo-um">Você segue</span></article>
+          <article><strong id="total-dois">0</strong><span id="rotulo-dois">Te seguem</span></article>
+          <article class="alert"><strong id="total-tres">0</strong><span id="rotulo-tres">Não seguem de volta</span></article>
+        </div>
+        <p id="titulo-lista" class="list-title"></p>
+        <ul id="lista"></ul>
+      </section>
+
+      <p class="note">Tudo é processado nesta aba. Nenhuma lista é enviada a um servidor próprio.</p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>
