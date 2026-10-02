@@ -16,7 +16,9 @@
 
 | Rede | Ferramenta | O que faz |
 | --- | --- | --- |
-| Instagram | Quem não segue de volta | Compara seguidores e seguindo do perfil aberto. |
+| Instagram | Quem não segue de volta | Abre e lê as listas exibidas no perfil, valida a leitura e compara seguidores com seguindo. |
+| Instagram | Últimos seguidores | Mostra os 50 primeiros seguidores na ordem apresentada pelo Instagram. |
+| Instagram | Últimos seguindo | Mostra os 50 primeiros perfis seguidos na ordem apresentada pelo Instagram. |
 | TikTok | Removedor de curtidas | Lê as curtidas da conta conectada e permite remover todas ou uma quantidade definida. |
 | TikTok | Removedor de reposts | Lê os reposts da conta conectada e permite desfazer todos ou uma quantidade definida. |
 
@@ -25,6 +27,8 @@
 - Escolha entre analisar todos os itens ou somente uma quantidade específica.
 - Confirmação obrigatória antes de remover curtidas ou reposts.
 - Progresso durante a leitura das listas do TikTok.
+- Leitura do Instagram pela interface já aberta no navegador, sem depender de uma consulta de lista em segundo plano.
+- Resultado de "não seguem de volta" somente após a leitura completa das duas listas, para não exibir comparação parcial.
 - Validação após a remoção de curtidas para evitar informar sucesso sem confirmação.
 - Processamento local no navegador, sem senha e sem servidor próprio.
 
@@ -34,7 +38,7 @@
 2. Abra `chrome://extensions` no Google Chrome.
 3. Ative o **Modo do desenvolvedor**.
 4. Clique em **Carregar sem compactação**.
-5. Selecione a pasta `instagram-nao-seguidores`.
+5. Selecione a pasta `SocialTools`.
 
 ## Como usar
 
@@ -42,8 +46,9 @@
 2. Abra a rede desejada em uma aba.
 3. Clique no ícone do **Social Tools**.
 4. Escolha a rede e a ferramenta.
-5. No TikTok, selecione **Todos** ou **Escolher quantidade** antes de analisar.
-6. Revise o resultado e confirme a remoção quando desejar continuar.
+5. No Instagram, escolha a comparação completa ou uma das listas recentes.
+6. No TikTok, selecione **Todos** ou **Escolher quantidade** antes de analisar.
+7. Revise o resultado e confirme a remoção quando desejar continuar.
 
 ## Privacidade
 
@@ -52,7 +57,7 @@ Os dados são consultados na sessão que já está aberta no navegador. A extens
 ## Estrutura
 
 ```text
-instagram-nao-seguidores/
+SocialTools/
 ├── assets/
 │   ├── banner-social-tools.png
 │   ├── icon-16.png

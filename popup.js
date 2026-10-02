@@ -101,7 +101,7 @@ document.querySelectorAll('.platform').forEach((botao) => {
     document.querySelector('#instagram-tools').classList.toggle('hidden', plataforma !== 'instagram');
     document.querySelector('#tiktok-tools').classList.toggle('hidden', plataforma !== 'tiktok');
     resultadoEl.classList.add('hidden');
-    mostrarStatus(plataforma === 'instagram' ? 'Abra um perfil público no Instagram e escolha a ferramenta.' : 'Escolha todos ou uma quantidade e inicie a análise.');
+    mostrarStatus(plataforma === 'instagram' ? 'Abra o Instagram conectado e escolha a ferramenta.' : 'Escolha todos ou uma quantidade e inicie a análise.');
   });
 });
 
@@ -139,7 +139,7 @@ document.querySelectorAll('[data-step]').forEach((botao) => {
 document.querySelector('#insta-nao-seguidores').addEventListener('click', async (evento) => {
   const botao = evento.currentTarget;
   setCarregando(botao, true, 'Quem não segue de volta');
-  mostrarStatus('Identificando e lendo o perfil aberto...');
+  mostrarStatus('Consultando seguidores e seguindo da conta conectada...');
   try {
     const aba = await abaAtiva(/^https:\/\/(www\.)?instagram\.com\//i);
     const resposta = await enviarParaAba(aba, { tipo: 'ANALISAR_CONTA' }, 'content.js');
@@ -154,6 +154,40 @@ document.querySelector('#insta-nao-seguidores').addEventListener('click', async 
   } catch (erro) { mostrarStatus(erro.message || 'Não foi possível analisar o perfil.'); }
   finally { setCarregando(botao, false, 'Quem não segue de volta'); }
 });
+
+async function listarRecentesInstagram(tipo) {
+  const seguidores = tipo === 'seguidores';
+  const botao = document.querySelector(seguidores ? '#insta-ultimos-seguidores' : '#insta-ultimos-seguindo');
+  const textoOriginal = seguidores ? 'Últimos seguidores' : 'Últimos seguindo';
+  const acao = seguidores ? 'ULTIMOS_SEGUIDORES' : 'ULTIMOS_SEGUINDO';
+  const rotuloTotal = seguidores ? 'Seguidores' : 'Seguindo';
+  const titulo = seguidores ? 'Últimos seguidores' : 'Últimos perfis seguidos';
+
+  setCarregando(botao, true, textoOriginal);
+  mostrarStatus(`Consultando os 50 primeiros ${tipo} da conta conectada...`);
+  try {
+    const aba = await abaAtiva(/^https:\/\/(www\.)?instagram\.com\//i);
+    const resposta = await enviarParaAba(aba, { tipo: acao, limite: 50 }, 'content.js');
+    if (!resposta?.sucesso) throw new Error(resposta?.erro || 'Não foi possível ler esta lista.');
+    const dados = resposta.dados;
+    const usuarios = Array.isArray(dados.usuarios) ? dados.usuarios : [];
+    const total = seguidores ? dados.perfil?.seguidores : dados.perfil?.seguindo;
+    mostrarResultado({
+      um: Number.isFinite(total) ? total : usuarios.length, rotuloUm: rotuloTotal,
+      dois: usuarios.length, rotuloDois: 'Perfis exibidos', tres: 50, rotuloTres: 'Máximo desta consulta',
+      titulo: `${titulo} de @${dados.perfil?.usuario || 'perfil'}`,
+      itens: usuarios.map((usuario) => `@${usuario}`)
+    });
+    mostrarStatus(`${usuarios.length} perfil(is) exibido(s) na ordem apresentada pelo Instagram.`);
+  } catch (erro) {
+    mostrarStatus(erro.message || 'Não foi possível ler esta lista.');
+  } finally {
+    setCarregando(botao, false, textoOriginal);
+  }
+}
+
+document.querySelector('#insta-ultimos-seguidores').addEventListener('click', () => listarRecentesInstagram('seguidores'));
+document.querySelector('#insta-ultimos-seguindo').addEventListener('click', () => listarRecentesInstagram('seguindo'));
 
 async function analisarTikTok(tipo) {
   const ferramenta = ferramentasTikTok[tipo];
@@ -213,6 +247,9 @@ ferramentasTikTok.curtidas.remover.addEventListener('click', () => removerTikTok
 ferramentasTikTok.reposts.remover.addEventListener('click', () => removerTikTok('reposts'));
 
 chrome.runtime.onMessage.addListener((mensagem) => {
-  if (mensagem.tipo === 'PROGRESSO') mostrarStatus(`Lendo ${mensagem.lista}: ${mensagem.lidos} perfis.`);
+  if (mensagem.tipo === 'PROGRESSO') {
+    const total = mensagem.total ? `/${mensagem.total}` : '';
+    mostrarStatus(`Lendo ${mensagem.lista}: ${mensagem.lidos}${total} perfis.`);
+  }
   if (mensagem.tipo === 'AGUARDANDO' || mensagem.tipo === 'TIKTOK_PROGRESSO') mostrarStatus(mensagem.texto);
 });

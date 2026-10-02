@@ -1,160 +1,199 @@
-const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+function htmlDaPagina() {
+  return document.documentElement.innerHTML;
+}
 
-function obterIdDaConta() {
-  const html = document.documentElement.innerHTML.replace(/\\"/g, '"');
-  const encontrado = html.match(/"viewerId":"(\d+)"/i)
+function obterIdDaContaLogada() {
+  const html = htmlDaPagina();
+  const encontrado = html.match(/\\?"viewerId\\?":\\?"(\d+)\\?"/i)
+    || html.match(/"viewerId":"(\d+)"/i)
+    || html.match(/\\?"appScopedIdentity\\?":\\?"(\d+)\\?"/i)
     || html.match(/"appScopedIdentity":"(\d+)"/i);
   if (encontrado) return encontrado[1];
 
   return document.cookie.match(/(?:^|;\s*)ds_user_id=(\d+)/)?.[1] || null;
 }
 
-function obterUsuarioDoPerfilAberto() {
-  const usuario = location.pathname.split('/').filter(Boolean)[0]?.toLowerCase();
-  if (!usuario || ['accounts', 'explore', 'reels', 'direct'].includes(usuario)) return null;
-  return usuario;
-}
-
 function cabecalhosInstagram() {
-  const html = document.documentElement.innerHTML.replace(/\\"/g, '"');
-  const csrfDoHtml = html.match(/"csrf_token":"([^"]+)"/i)?.[1];
-  const appId = html.match(/"X-IG-App-ID":"([^"]+)"/i)?.[1];
+  const html = htmlDaPagina();
+  const csrfDoHtml = html.match(/"csrf_token":"([^"]+)"/i)?.[1]
+    || html.match(/\\?"csrf_token\\?":\\?"([^"]+)\\?"/i)?.[1];
+  const appId = html.match(/"X-IG-App-ID":"([^"]+)"/i)?.[1]
+    || html.match(/\\?"X-IG-App-ID\\?":\\?"([^"]+)\\?"/i)?.[1];
+  const csrfDoCookie = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)?.[1];
+  const claim = sessionStorage.getItem('www-claim-v2');
   const headers = {
     'x-asbd-id': '359341',
     'x-ig-max-touch-points': '0',
     'x-requested-with': 'XMLHttpRequest'
   };
-  const csrf = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)?.[1];
-  const claim = sessionStorage.getItem('www-claim-v2');
 
-  if (csrfDoHtml || csrf) headers['x-csrftoken'] = csrfDoHtml || decodeURIComponent(csrf);
+  if (csrfDoHtml || csrfDoCookie) headers['x-csrftoken'] = csrfDoHtml || decodeURIComponent(csrfDoCookie);
   if (appId) headers['x-ig-app-id'] = appId;
   if (claim) headers['x-ig-www-claim'] = claim;
   return headers;
 }
 
-function enviarProgresso(lista, lidos) {
-  chrome.runtime.sendMessage({ tipo: 'PROGRESSO', lista, lidos }).catch(() => {});
+function enviarProgresso(lista, lidos, total = null) {
+  chrome.runtime.sendMessage({ tipo: 'PROGRESSO', lista, lidos, total }).catch(() => {});
 }
 
-async function buscarPagina(url) {
-  for (let tentativa = 1; tentativa <= 3; tentativa += 1) {
-    const resposta = await fetch(url, {
-      credentials: 'include',
-      headers: cabecalhosInstagram()
-    });
+async function consultarInstagram(url) {
+  const resposta = await fetch(url, {
+    credentials: 'include',
+    headers: cabecalhosInstagram()
+  });
 
-    if (resposta.status === 429 && tentativa < 3) {
-      const segundos = tentativa * 45;
-      chrome.runtime.sendMessage({
-        tipo: 'AGUARDANDO',
-        texto: `O Instagram pediu uma pausa. Tentando novamente em ${segundos}s...`
-      }).catch(() => {});
-      await esperar(segundos * 1000);
-      continue;
-    }
-    if (resposta.status === 401 || resposta.status === 403) {
-      throw new Error('O Instagram recusou a leitura. Atualize a página, confirme o login e tente novamente.');
-    }
-    if (resposta.status === 429) {
-      throw new Error('O Instagram continuou limitando as consultas após as tentativas automáticas. Aguarde alguns minutos e tente novamente.');
-    }
-    if (!resposta.ok) {
-      const detalhe = (await resposta.text()).replace(/\s+/g, ' ').slice(0, 140);
-      throw new Error(
-        `O Instagram não respondeu a lista (erro ${resposta.status}).` +
-        (detalhe ? ` Detalhe: ${detalhe}` : '')
-      );
-    }
-
-    return resposta.json();
+  if (resposta.status === 401 || resposta.status === 403) {
+    const erro = new Error('O Instagram recusou a sessão. Atualize a página, confirme o login e tente novamente.');
+    erro.status = resposta.status;
+    throw erro;
+  }
+  if (resposta.status === 429) {
+    const erro = new Error('O Instagram limitou temporariamente as consultas. Aguarde alguns minutos antes de tentar novamente.');
+    erro.status = resposta.status;
+    throw erro;
+  }
+  if (!resposta.ok) {
+    const detalhe = (await resposta.text()).replace(/\s+/g, ' ').slice(0, 140);
+    const erro = new Error(`O Instagram não respondeu a lista (erro ${resposta.status}).${detalhe ? ` ${detalhe}` : ''}`);
+    erro.status = resposta.status;
+    throw erro;
   }
 
-  throw new Error('Não foi possível carregar a lista do Instagram.');
+  try {
+    return await resposta.json();
+  } catch (_) {
+    throw new Error('O Instagram retornou uma resposta inesperada. Atualize a página e tente novamente.');
+  }
 }
 
-async function obterPerfilAberto(usuario) {
-  const url = `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(usuario)}`;
-  const dados = await buscarPagina(url);
-  const perfil = dados.data?.user || dados.user;
-  const id = String(perfil?.id ?? perfil?.pk ?? '');
+function perfilDaResposta(item) {
+  const id = String(item?.pk ?? item?.pk_id ?? item?.id ?? '');
+  const usuario = String(item?.username ?? '').trim().toLowerCase();
+  return id && usuario ? { id, usuario } : null;
+}
 
-  if (!id) throw new Error('Não consegui identificar o perfil aberto. Atualize a página do perfil e tente novamente.');
+async function obterResumoDaConta(idConta) {
+  let dados;
+  try {
+    dados = await consultarInstagram(`https://www.instagram.com/api/v1/users/${encodeURIComponent(idConta)}/info/`);
+  } catch (erro) {
+    // Em algumas sessões o resumo retorna 400, mas as listas continuam
+    // disponíveis. Nesse caso, seguimos usando o total lido das próprias listas.
+    if (erro.status === 400) return { usuario: '', seguidores: null, seguindo: null };
+    throw erro;
+  }
+  const conta = dados.user || dados.data?.user;
+  if (!conta) throw new Error('Não consegui carregar os dados da conta conectada. Atualize o Instagram e tente novamente.');
   return {
-    id,
-    usuario: String(perfil.username || usuario).toLowerCase(),
-    seguidores: Number(perfil.follower_count),
-    seguindo: Number(perfil.following_count)
+    usuario: String(conta.username || '').toLowerCase(),
+    seguidores: Number.isFinite(Number(conta.follower_count)) ? Number(conta.follower_count) : null,
+    seguindo: Number.isFinite(Number(conta.following_count)) ? Number(conta.following_count) : null
   };
 }
 
-async function carregarLista(idConta, lista, idDoPerfil) {
+async function carregarListaDaConta(idConta, tipo, totalEsperado = null, limite = null) {
   const usuarios = new Map();
   const cursoresUsados = new Set();
   let cursor = '';
 
   while (true) {
-    let url = `https://www.instagram.com/api/v1/friendships/${idConta}/${lista}/?count=50`;
-    url += lista === 'followers'
+    let url = `https://www.instagram.com/api/v1/friendships/${encodeURIComponent(idConta)}/${tipo}/?count=50`;
+    url += tipo === 'followers'
       ? '&search_surface=follow_list_page'
       : '&order=date_followed_latest';
     if (cursor) url += `&max_id=${encodeURIComponent(cursor)}`;
 
-    const dados = await buscarPagina(url);
+    const dados = await consultarInstagram(url);
     if (!Array.isArray(dados.users)) {
       throw new Error('O Instagram não retornou a lista esperada. Atualize a página e tente novamente.');
     }
-    dados.users.forEach((perfil) => {
-      const id = String(perfil.pk ?? perfil.pk_id ?? perfil.id ?? '');
-      const usuario = String(perfil.username ?? '').trim().toLowerCase();
-      if (id && usuario && id !== idDoPerfil) usuarios.set(id, usuario);
+
+    dados.users.forEach((item) => {
+      const perfil = perfilDaResposta(item);
+      if (perfil) usuarios.set(perfil.id, perfil.usuario);
     });
-    enviarProgresso(lista === 'followers' ? 'seguidores' : 'seguindo', usuarios.size);
+    enviarProgresso(tipo === 'followers' ? 'seguidores' : 'seguindo', usuarios.size, limite || totalEsperado);
+
+    if (limite && usuarios.size >= limite) break;
 
     const proximoCursor = dados.next_max_id == null ? '' : String(dados.next_max_id);
     if (!proximoCursor || !dados.users.length || cursoresUsados.has(proximoCursor)) break;
-
     cursoresUsados.add(proximoCursor);
     cursor = proximoCursor;
-    await esperar(1200 + Math.floor(Math.random() * 900));
   }
 
-  return usuarios;
+  const lista = [...usuarios.entries()].map(([id, usuario]) => ({ id, usuario }));
+  if (!limite && totalEsperado != null && lista.length < totalEsperado) {
+    throw new Error(`Leitura incompleta. ${tipo === 'followers' ? 'Seguidores' : 'Seguindo'}: ${lista.length}/${totalEsperado}. Nenhum resultado foi exibido para evitar uma comparação errada.`);
+  }
+  return limite ? lista.slice(0, limite) : lista;
+}
+
+async function executarAnalise(tipoMensagem, limite) {
+  const idConta = obterIdDaContaLogada();
+  if (!idConta) throw new Error('Não identifiquei sua conta logada. Abra ou atualize o Instagram e tente novamente.');
+
+  const resumo = await obterResumoDaConta(idConta);
+  if (tipoMensagem === 'ULTIMOS_SEGUIDORES') {
+    const usuarios = await carregarListaDaConta(idConta, 'followers', resumo.seguidores, limite);
+    return { tipo: 'recentes', resumo, usuarios };
+  }
+  if (tipoMensagem === 'ULTIMOS_SEGUINDO') {
+    const usuarios = await carregarListaDaConta(idConta, 'following', resumo.seguindo, limite);
+    return { tipo: 'recentes', resumo, usuarios };
+  }
+
+  const seguidores = await carregarListaDaConta(idConta, 'followers', resumo.seguidores);
+  const seguindo = await carregarListaDaConta(idConta, 'following', resumo.seguindo);
+  const seguidoresIds = new Set(seguidores.map((perfil) => perfil.id));
+  const naoSeguem = seguindo
+    .filter((perfil) => !seguidoresIds.has(perfil.id))
+    .map((perfil) => perfil.usuario)
+    .sort();
+
+  // Se todos os perfis lidos fossem mútuos, ainda existiria pelo menos esta
+  // diferença. A validação impede exibir um resultado matematicamente impossível.
+  const minimoNaoSeguem = Math.max(0, seguindo.length - seguidores.length);
+  if (naoSeguem.length < minimoNaoSeguem) {
+    throw new Error('O Instagram retornou listas inconsistentes. Atualize a página e tente novamente; nenhum resultado foi exibido para evitar um número incorreto.');
+  }
+  return {
+    tipo: 'comparacao',
+    resumo,
+    seguidores,
+    seguindo,
+    naoSeguem
+  };
 }
 
 chrome.runtime.onMessage.addListener((mensagem, _remetente, responder) => {
-  if (mensagem.tipo !== 'ANALISAR_CONTA') return;
+  if (!['ANALISAR_CONTA', 'ULTIMOS_SEGUIDORES', 'ULTIMOS_SEGUINDO'].includes(mensagem?.tipo)) return;
 
   (async () => {
     try {
-      const usuarioAberto = obterUsuarioDoPerfilAberto();
-      if (!usuarioAberto) throw new Error('Abra um perfil do Instagram antes de iniciar a análise.');
+      const limite = Number.isInteger(Number(mensagem.limite)) && Number(mensagem.limite) > 0
+        ? Number(mensagem.limite)
+        : 50;
+      const resultado = await executarAnalise(mensagem.tipo, limite);
 
-      const perfil = await obterPerfilAberto(usuarioAberto);
-      const seguidores = await carregarLista(perfil.id, 'followers', perfil.id);
-      const seguindo = await carregarLista(perfil.id, 'following', perfil.id);
-      const naoSeguem = [...seguindo.entries()]
-        .filter(([id]) => !seguidores.has(id))
-        .map(([, usuario]) => usuario)
-        .sort();
-      const mutuos = [...seguindo.entries()]
-        .filter(([id]) => seguidores.has(id))
-        .map(([, usuario]) => usuario)
-        .sort();
+      if (resultado.tipo === 'recentes') {
+        responder({ sucesso: true, dados: { perfil: resultado.resumo, usuarios: resultado.usuarios.map((perfil) => perfil.usuario), limite } });
+        return;
+      }
 
       responder({
         sucesso: true,
         dados: {
-          seguidores: [...seguidores.values()].sort(),
-          seguindo: [...seguindo.values()].sort(),
-          totalSeguidores: Number.isFinite(perfil.seguidores) ? perfil.seguidores : seguidores.size,
-          totalSeguindo: Number.isFinite(perfil.seguindo) ? perfil.seguindo : seguindo.size,
-          naoSeguem,
-          mutuos
+          seguidores: resultado.seguidores.map((perfil) => perfil.usuario),
+          seguindo: resultado.seguindo.map((perfil) => perfil.usuario),
+          totalSeguidores: resultado.resumo.seguidores ?? resultado.seguidores.length,
+          totalSeguindo: resultado.resumo.seguindo ?? resultado.seguindo.length,
+          naoSeguem: resultado.naoSeguem
         }
       });
     } catch (erro) {
-      responder({ sucesso: false, erro: erro.message });
+      responder({ sucesso: false, erro: erro.message || 'Não foi possível consultar o Instagram.' });
     }
   })();
 
