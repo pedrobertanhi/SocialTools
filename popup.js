@@ -139,7 +139,7 @@ document.querySelectorAll('[data-step]').forEach((botao) => {
 document.querySelector('#insta-nao-seguidores').addEventListener('click', async (evento) => {
   const botao = evento.currentTarget;
   setCarregando(botao, true, 'Quem não segue de volta');
-  mostrarStatus('Consultando seguidores e seguindo da conta conectada...');
+  mostrarStatus('Consultando seguidores e seguindo do perfil aberto...');
   try {
     const aba = await abaAtiva(/^https:\/\/(www\.)?instagram\.com\//i);
     const resposta = await enviarParaAba(aba, { tipo: 'ANALISAR_CONTA' }, 'content.js');
@@ -148,7 +148,10 @@ document.querySelector('#insta-nao-seguidores').addEventListener('click', async 
     mostrarResultado({
       um: dados.totalSeguindo, rotuloUm: 'Você segue', dois: dados.totalSeguidores, rotuloDois: 'Te seguem',
       tres: dados.naoSeguem.length, rotuloTres: 'Não seguem de volta',
-      titulo: 'Perfis que não seguem você de volta', itens: dados.naoSeguem.map((perfil) => `@${perfil}`)
+      titulo: dados.perfil?.usuario
+        ? `Perfis que não seguem @${dados.perfil.usuario} de volta`
+        : 'Perfis que não seguem de volta',
+      itens: dados.naoSeguem.map((perfil) => `@${perfil}`)
     });
     mostrarStatus(`Análise concluída: ${dados.naoSeguem.length} perfil(is) não seguem você de volta.`);
   } catch (erro) { mostrarStatus(erro.message || 'Não foi possível analisar o perfil.'); }
@@ -164,7 +167,7 @@ async function listarRecentesInstagram(tipo) {
   const titulo = seguidores ? 'Últimos seguidores' : 'Últimos perfis seguidos';
 
   setCarregando(botao, true, textoOriginal);
-  mostrarStatus(`Consultando os 50 primeiros ${tipo} da conta conectada...`);
+  mostrarStatus(`Consultando os 50 primeiros ${tipo} do perfil aberto...`);
   try {
     const aba = await abaAtiva(/^https:\/\/(www\.)?instagram\.com\//i);
     const resposta = await enviarParaAba(aba, { tipo: acao, limite: 50 }, 'content.js');
