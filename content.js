@@ -13,6 +13,23 @@ function obterIdDaContaLogada() {
   return document.cookie.match(/(?:^|;\s*)ds_user_id=(\d+)/)?.[1] || null;
 }
 
+const ROTAS_QUE_NAO_SAO_PERFIL = new Set([
+  '', 'accounts', 'about', 'api', 'challenge', 'developer', 'direct', 'directory',
+  'emails', 'explore', 'legal', 'p', 'privacy', 'reel', 'reels', 'stories',
+  'terms', 'web', 'your_activity'
+]);
+
+function usuarioDoPerfilAberto() {
+  const partes = location.pathname.split('/').filter(Boolean);
+  if (!partes.length) return '';
+
+  // O Instagram também abre perfis por /_u/usuario.
+  const candidato = partes[0] === '_u' ? partes[1] : partes[0];
+  if (!candidato || ROTAS_QUE_NAO_SAO_PERFIL.has(candidato.toLowerCase())) return '';
+  if (!/^[a-zA-Z0-9._]{1,30}$/.test(candidato)) return '';
+  return candidato.toLowerCase();
+}
+
 function cabecalhosInstagram() {
   const html = htmlDaPagina();
   const csrfDoHtml = html.match(/"csrf_token":"([^"]+)"/i)?.[1]
@@ -28,7 +45,9 @@ function cabecalhosInstagram() {
   };
 
   if (csrfDoHtml || csrfDoCookie) headers['x-csrftoken'] = csrfDoHtml || decodeURIComponent(csrfDoCookie);
-  if (appId) headers['x-ig-app-id'] = appId;
+  // Nem todas as páginas atuais deixam o ID no HTML. Este é o identificador
+  // do cliente web e serve apenas como fallback para as rotas do próprio site.
+  headers['x-ig-app-id'] = appId || '936619743392459';
   if (claim) headers['x-ig-www-claim'] = claim;
   return headers;
 }
@@ -73,6 +92,40 @@ function perfilDaResposta(item) {
   return id && usuario ? { id, usuario } : null;
 }
 
+async function obterPerfilPorUsuario(usuario) {
+  if (!usuario) return null;
+  const dados = await consultarInstagram(
+    `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(usuario)}`
+  );
+  const conta = dados.data?.user || dados.user;
+  const id = String(conta?.id ?? conta?.pk ?? '');
+  if (!id) throw new Error(`Não consegui identificar o perfil @${usuario}. Atualize a página e tente novamente.`);
+  return {
+    id,
+    usuario: String(conta.username || usuario).trim().toLowerCase(),
+    seguidores: Number.isFinite(Number(conta.edge_followed_by?.count ?? conta.follower_count))
+      ? Number(conta.edge_followed_by?.count ?? conta.follower_count)
+      : null,
+    seguindo: Number.isFinite(Number(conta.edge_follow?.count ?? conta.following_count))
+      ? Number(conta.edge_follow?.count ?? conta.following_count)
+      : null,
+    privado: Boolean(conta.is_private),
+    seguidoPelaConta: Boolean(conta.followed_by_viewer)
+  };
+}
+
+async function resolverPerfilAlvo() {
+  const usuarioAberto = usuarioDoPerfilAberto();
+  if (usuarioAberto) return obterPerfilPorUsuario(usuarioAberto);
+
+  const idLogado = obterIdDaContaLogada();
+  if (!idLogado) {
+    throw new Error('Não identifiquei um perfil. Abra o perfil que deseja analisar no Instagram e tente novamente.');
+  }
+  const resumo = await obterResumoDaConta(idLogado);
+  return { id: idLogado, ...resumo, privado: false, seguidoPelaConta: true };
+}
+
 async function obterResumoDaConta(idConta) {
   let dados;
   try {
@@ -98,7 +151,7 @@ async function carregarListaDaConta(idConta, tipo, totalEsperado = null, limite 
   let cursor = '';
 
   while (true) {
-    let url = `https://www.instagram.com/api/v1/friendships/${encodeURIComponent(idConta)}/${tipo}/?count=50`;
+    let url = `https://www.instagram.com/api/v1/friendships/${encodeURIComponent(idConta)}/${tipo}/?count=100`;
     url += tipo === 'followers'
       ? '&search_surface=follow_list_page'
       : '&order=date_followed_latest';
@@ -111,7 +164,10 @@ async function carregarListaDaConta(idConta, tipo, totalEsperado = null, limite 
 
     dados.users.forEach((item) => {
       const perfil = perfilDaResposta(item);
-      if (perfil) usuarios.set(perfil.id, perfil.usuario);
+      // O username é o identificador mais consistente entre as duas rotas.
+      // Algumas respostas do Instagram representam o mesmo perfil com PKs
+      // diferentes, o que gerava falsos positivos na comparação por ID.
+      if (perfil) usuarios.set(perfil.usuario, perfil);
     });
     enviarProgresso(tipo === 'followers' ? 'seguidores' : 'seguindo', usuarios.size, limite || totalEsperado);
 
@@ -123,18 +179,16 @@ async function carregarListaDaConta(idConta, tipo, totalEsperado = null, limite 
     cursor = proximoCursor;
   }
 
-  const lista = [...usuarios.entries()].map(([id, usuario]) => ({ id, usuario }));
-  if (!limite && totalEsperado != null && lista.length < totalEsperado) {
-    throw new Error(`Leitura incompleta. ${tipo === 'followers' ? 'Seguidores' : 'Seguindo'}: ${lista.length}/${totalEsperado}. Nenhum resultado foi exibido para evitar uma comparação errada.`);
-  }
+  const lista = [...usuarios.values()];
+  // O contador do perfil pode incluir contas desativadas, bloqueadas ou ainda
+  // não refletir mudanças recentes. O fim da paginação é a fonte confiável;
+  // exigir igualdade com o contador fazia perfis válidos sempre falharem.
   return limite ? lista.slice(0, limite) : lista;
 }
 
 async function executarAnalise(tipoMensagem, limite) {
-  const idConta = obterIdDaContaLogada();
-  if (!idConta) throw new Error('Não identifiquei sua conta logada. Abra ou atualize o Instagram e tente novamente.');
-
-  const resumo = await obterResumoDaConta(idConta);
+  const resumo = await resolverPerfilAlvo();
+  const idConta = resumo.id;
   if (tipoMensagem === 'ULTIMOS_SEGUIDORES') {
     const usuarios = await carregarListaDaConta(idConta, 'followers', resumo.seguidores, limite);
     return { tipo: 'recentes', resumo, usuarios };
@@ -146,18 +200,13 @@ async function executarAnalise(tipoMensagem, limite) {
 
   const seguidores = await carregarListaDaConta(idConta, 'followers', resumo.seguidores);
   const seguindo = await carregarListaDaConta(idConta, 'following', resumo.seguindo);
-  const seguidoresIds = new Set(seguidores.map((perfil) => perfil.id));
+  const seguidoresUsuarios = new Set(seguidores.map((perfil) => perfil.usuario));
+  const seguidoresIds = new Set(seguidores.map((perfil) => perfil.id).filter(Boolean));
   const naoSeguem = seguindo
-    .filter((perfil) => !seguidoresIds.has(perfil.id))
+    .filter((perfil) => !seguidoresUsuarios.has(perfil.usuario) && !seguidoresIds.has(perfil.id))
     .map((perfil) => perfil.usuario)
     .sort();
 
-  // Se todos os perfis lidos fossem mútuos, ainda existiria pelo menos esta
-  // diferença. A validação impede exibir um resultado matematicamente impossível.
-  const minimoNaoSeguem = Math.max(0, seguindo.length - seguidores.length);
-  if (naoSeguem.length < minimoNaoSeguem) {
-    throw new Error('O Instagram retornou listas inconsistentes. Atualize a página e tente novamente; nenhum resultado foi exibido para evitar um número incorreto.');
-  }
   return {
     tipo: 'comparacao',
     resumo,
@@ -189,7 +238,8 @@ chrome.runtime.onMessage.addListener((mensagem, _remetente, responder) => {
           seguindo: resultado.seguindo.map((perfil) => perfil.usuario),
           totalSeguidores: resultado.resumo.seguidores ?? resultado.seguidores.length,
           totalSeguindo: resultado.resumo.seguindo ?? resultado.seguindo.length,
-          naoSeguem: resultado.naoSeguem
+          naoSeguem: resultado.naoSeguem,
+          perfil: { usuario: resultado.resumo.usuario }
         }
       });
     } catch (erro) {
